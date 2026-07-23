@@ -310,19 +310,21 @@ void loop()
     client.loop();
     webSocket.loop();
 
-    if (Serial2.available())
-    {
-      String inputString = Serial2.readStringUntil('\n');
-      inputString.trim();
-
-      if (inputString.length() > 0)
-      {
-        Serial.println(">>> RX from STM32: " + inputString);
-      }
-
-      if (inputString.length() > 0 && inputString.charAt(0) == '{')
-      {
-        sendTelemetryToBackend(inputString);
+    // ==== NON-BLOCKING: Đọc từng ký tự từ STM32 thay vì readStringUntil ====
+    static String stm32Buffer = "";
+    while (Serial2.available()) {
+      char c = (char)Serial2.read();
+      if (c == '\n' || c == '\r') {
+        stm32Buffer.trim();
+        if (stm32Buffer.length() > 0) {
+          Serial.println(">>> RX from STM32: " + stm32Buffer);
+          if (stm32Buffer.charAt(0) == '{') {
+            sendTelemetryToBackend(stm32Buffer);
+          }
+          stm32Buffer = "";
+        }
+      } else {
+        stm32Buffer += c;
       }
     }
   }
