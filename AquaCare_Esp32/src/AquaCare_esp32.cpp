@@ -166,7 +166,6 @@ void sendTelemetryToBackend(String rawJson)
     serializeJson(beDoc, finalJson);
 
     String topic = "iras-rag/telemetry/" + mac;
-    client.publish(topic.c_str(), finalJson.c_str());
     webSocket.broadcastTXT(finalJson);
     Serial.println("Sent BE: " + finalJson);
   }
@@ -315,8 +314,8 @@ void loop()
     {
       String inputString = Serial2.readStringUntil('\n');
       inputString.trim();
-      
-      if (inputString.length() > 0) 
+
+      if (inputString.length() > 0)
       {
         Serial.println(">>> RX from STM32: " + inputString);
       }
