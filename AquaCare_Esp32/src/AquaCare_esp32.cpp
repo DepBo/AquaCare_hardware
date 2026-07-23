@@ -166,6 +166,7 @@ void sendTelemetryToBackend(String rawJson)
     serializeJson(beDoc, finalJson);
 
     String topic = "iras-rag/telemetry/" + mac;
+    client.publish(topic.c_str(), finalJson.c_str());
     webSocket.broadcastTXT(finalJson);
     Serial.println("Sent BE: " + finalJson);
   }

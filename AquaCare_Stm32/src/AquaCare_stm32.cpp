@@ -13,7 +13,7 @@
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 // Relay control: đèn PB0, sủi PB14, bơm PB8
-const uint8_t relayPins[] = {PB0, PB14, PB8};
+const uint8_t relayPins[] = {PB0, PB15, PB8};
 const uint8_t RELAY_COUNT = sizeof(relayPins) / sizeof(relayPins[0]);
 // HardwareSerial pzemSerial(PA3, PA2);
 // PZEM004Tv30 pzem(pzemSerial);
