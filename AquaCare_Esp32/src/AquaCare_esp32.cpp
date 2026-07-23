@@ -1,13 +1,14 @@
 #include <Arduino.h>
+#include <ArduinoJson.h>
+#include <ESPmDNS.h>
 #include <FS.h>
-#include <SPIFFS.h>
-#include <WiFi.h>
 #include <PubSubClient.h>
+#include <SPIFFS.h>
+#include <WebSocketsServer.h>
+#include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WiFiManager.h>
-#include <ArduinoJson.h>
-#include <WebSocketsServer.h>
-#include <ESPmDNS.h>
+
 
 // ==========================================
 // 1. CẤU HÌNH PINOUT & MAPPING
@@ -47,32 +48,24 @@ WebSocketsServer webSocket = WebSocketsServer(81);
 // ==========================================
 // 3. HÀM HỖ TRỢ (FILESYSTEM & LƯU CONFIG)
 // ==========================================
-void saveConfigCallback()
-{
-  shouldSaveConfig = true;
-}
+void saveConfigCallback() { shouldSaveConfig = true; }
 
-void loadConfig()
-{
-  if (SPIFFS.begin(true))
-  {
+void loadConfig() {
+  if (SPIFFS.begin(true)) {
     // FORCE RESET: Xóa cấu hình cũ của đồ án trước lưu trong bộ nhớ mạch
     if (SPIFFS.exists("/config.json")) {
       SPIFFS.remove("/config.json");
       Serial.println(">>> Deleted old config.json!");
     }
-    
-    if (SPIFFS.exists("/config.json"))
-    {
+
+    if (SPIFFS.exists("/config.json")) {
       File configFile = SPIFFS.open("/config.json", "r");
-      if (configFile)
-      {
+      if (configFile) {
         size_t size = configFile.size();
         std::unique_ptr<char[]> buf(new char[size]);
         configFile.readBytes(buf.get(), size);
         JsonDocument json;
-        if (!deserializeJson(json, buf.get()))
-        {
+        if (!deserializeJson(json, buf.get())) {
           strcpy(mqtt_server, json["mqtt_server"]);
           strcpy(mqtt_port, json["mqtt_port"]);
           strcpy(mqtt_user, json["mqtt_user"]);
@@ -83,16 +76,14 @@ void loadConfig()
   }
 }
 
-void saveConfig()
-{
+void saveConfig() {
   JsonDocument json;
   json["mqtt_server"] = mqtt_server;
   json["mqtt_port"] = mqtt_port;
   json["mqtt_user"] = mqtt_user;
   json["mqtt_pass"] = mqtt_pass;
   File configFile = SPIFFS.open("/config.json", "w");
-  if (configFile)
-  {
+  if (configFile) {
     serializeJson(json, configFile);
     configFile.close();
   }
@@ -101,8 +92,7 @@ void saveConfig()
 // ==========================================
 // 5. MQTT LOGIC & ĐÓNG GÓI JSON
 // ==========================================
-void publishSystemConfig()
-{
+void publishSystemConfig() {
   if (!client.connected())
     return;
   delay(200);
@@ -125,11 +115,9 @@ void publishSystemConfig()
   client.publish(topic_system_config, output.c_str(), true);
 }
 
-void sendTelemetryToBackend(String rawJson)
-{
+void sendTelemetryToBackend(String rawJson) {
   StaticJsonDocument<512> stmDoc;
-  if (!deserializeJson(stmDoc, rawJson))
-  {
+  if (!deserializeJson(stmDoc, rawJson)) {
     StaticJsonDocument<1024> beDoc;
     String mac = WiFi.macAddress();
     mac.toUpperCase();
@@ -137,26 +125,22 @@ void sendTelemetryToBackend(String rawJson)
 
     JsonArray readings = beDoc.createNestedArray("readings");
 
-    if (stmDoc.containsKey("temp"))
-    {
+    if (stmDoc.containsKey("temp")) {
       JsonObject r = readings.createNestedObject();
       r["pin"] = PIN_TEMP;
       r["val"] = stmDoc["temp"];
     }
-    if (stmDoc.containsKey("pH"))
-    {
+    if (stmDoc.containsKey("pH")) {
       JsonObject r = readings.createNestedObject();
       r["pin"] = PIN_PH;
       r["val"] = stmDoc["pH"];
     }
-    if (stmDoc.containsKey("tds"))
-    {
+    if (stmDoc.containsKey("tds")) {
       JsonObject r = readings.createNestedObject();
       r["pin"] = PIN_TDS;
       r["val"] = stmDoc["tds"];
     }
-    if (stmDoc.containsKey("water"))
-    {
+    if (stmDoc.containsKey("water")) {
       JsonObject r = readings.createNestedObject();
       r["pin"] = PIN_WATER;
       r["val"] = stmDoc["water"];
@@ -172,15 +156,13 @@ void sendTelemetryToBackend(String rawJson)
   }
 }
 
-void callback(char *topic, byte *payload, unsigned int length)
-{
+void callback(char *topic, byte *payload, unsigned int length) {
   String message = "";
   for (int i = 0; i < length; i++)
     message += (char)payload[i];
   Serial.println("Recv BE cmd: " + message);
 
-  if (message == "RESET_CONFIG")
-  {
+  if (message == "RESET_CONFIG") {
     wm.resetSettings();
     if (SPIFFS.exists("/config.json"))
       SPIFFS.remove("/config.json");
@@ -189,10 +171,8 @@ void callback(char *topic, byte *payload, unsigned int length)
 
   // --- XỬ LÝ LỆNH JSON ---
   StaticJsonDocument<256> cmdDoc;
-  if (!deserializeJson(cmdDoc, message))
-  {
-    if (cmdDoc.containsKey("cmd") && cmdDoc.containsKey("pin"))
-    {
+  if (!deserializeJson(cmdDoc, message)) {
+    if (cmdDoc.containsKey("cmd") && cmdDoc.containsKey("pin")) {
       int pin = cmdDoc["pin"];
       String cmd = cmdDoc["cmd"];
 
@@ -200,23 +180,20 @@ void callback(char *topic, byte *payload, unsigned int length)
       Serial2.println(stmCommand);
       Serial.println("Forward STM32: " + stmCommand);
     }
-  }
-  else
-  {
+  } else {
     // Nếu không phải JSON (ví dụ lệnh Calibration), cứ đẩy thẳng xuống STM32
     Serial2.println(message);
   }
 }
 
-void reconnect()
-{
+void reconnect() {
   if (WiFi.status() != WL_CONNECTED)
     return;
-  if (!client.connected())
-  {
+  if (!client.connected()) {
     // BUG FIX QUAN TRỌNG: Phải gọi espClient.stop() trước khi kết nối lại.
     // Nếu không, WiFiClientSecure sẽ cố tái sử dụng phiên TLS cũ đã chết
-    // khiến TLS handshake thất bại âm thầm và ESP32 không gửi được data nào lên HiveMQ.
+    // khiến TLS handshake thất bại âm thầm và ESP32 không gửi được data nào lên
+    // HiveMQ.
     espClient.stop();
     delay(100); // Chờ socket đóng hẳn
 
@@ -226,17 +203,15 @@ void reconnect()
     cleanMac.replace(":", "");
     String clientId = "ESP32Gateway-" + cleanMac;
 
-    Serial.println("Connecting to MQTT Server: " + String(mqtt_server) + " at port " + String(mqtt_port) + "...");
+    Serial.println("Connecting to MQTT Server: " + String(mqtt_server) +
+                   " at port " + String(mqtt_port) + "...");
     Serial.println("Using TLS/SSL (WiFiClientSecure)");
-    if (client.connect(clientId.c_str(), mqtt_user, mqtt_pass))
-    {
+    if (client.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
       Serial.println(">>> MQTT CONNECTED SUCCESSFULLY!");
       String topic_control_dynamic = "iras-rag/command/" + mac;
       client.subscribe(topic_control_dynamic.c_str());
       publishSystemConfig();
-    }
-    else
-    {
+    } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
       Serial.println(" try again in 5 seconds");
@@ -248,13 +223,13 @@ void reconnect()
 // ==========================================
 // 6. SETUP & LOOP CHÍNH
 // ==========================================
-void setup()
-{
+void setup() {
   Serial.begin(115200);
   Serial2.begin(115200, SERIAL_8N1, RXp2, TXp2);
   loadConfig();
 
-  WiFiManagerParameter custom_mqtt_server("server", "MQTT Server", mqtt_server, 60);
+  WiFiManagerParameter custom_mqtt_server("server", "MQTT Server", mqtt_server,
+                                          60);
   WiFiManagerParameter custom_mqtt_port("port", "MQTT Port", mqtt_port, 6);
   WiFiManagerParameter custom_mqtt_user("user", "MQTT User", mqtt_user, 20);
   WiFiManagerParameter custom_mqtt_pass("pass", "MQTT Pass", mqtt_pass, 30);
@@ -268,8 +243,7 @@ void setup()
   if (!wm.autoConnect("ESP32-SmartGarden", "12345678"))
     ESP.restart();
 
-  if (shouldSaveConfig)
-  {
+  if (shouldSaveConfig) {
     strcpy(mqtt_server, custom_mqtt_server.getValue());
     strcpy(mqtt_port, custom_mqtt_port.getValue());
     strcpy(mqtt_user, custom_mqtt_user.getValue());
@@ -281,7 +255,8 @@ void setup()
   if (MDNS.begin("esp32-gateway"))
     MDNS.addService("ws", "tcp", 81);
 
-  espClient.setInsecure(); // Bỏ qua kiểm tra chứng chỉ SSL/TLS (Bắt buộc cho HiveMQ TLS)
+  espClient.setInsecure(); // Bỏ qua kiểm tra chứng chỉ SSL/TLS (Bắt buộc cho
+                           // HiveMQ TLS)
   client.setServer(mqtt_server, atoi(mqtt_port));
   client.setCallback(callback);
   client.setBufferSize(1024);
@@ -290,39 +265,31 @@ void setup()
   Serial.println("System Ready - Connected to HiveMQ (TLS)");
 }
 
-void loop()
-{
-  if (WiFi.status() != WL_CONNECTED)
-  {
+void loop() {
+  if (WiFi.status() != WL_CONNECTED) {
     unsigned long now = millis();
-    if (now - lastWiFiCheck > wifiTimeout)
-    {
+    if (now - lastWiFiCheck > wifiTimeout) {
       wm.setConfigPortalTimeout(180);
       if (!wm.startConfigPortal("ESP32-ReconnectWifi", "12345678"))
         ESP.restart();
       lastWiFiCheck = now;
     }
-  }
-  else
-  {
+  } else {
     lastWiFiCheck = millis();
     if (!client.connected())
       reconnect();
     client.loop();
     webSocket.loop();
 
-    if (Serial2.available())
-    {
+    if (Serial2.available()) {
       String inputString = Serial2.readStringUntil('\n');
       inputString.trim();
 
-      if (inputString.length() > 0)
-      {
+      if (inputString.length() > 0) {
         Serial.println(">>> RX from STM32: " + inputString);
       }
 
-      if (inputString.length() > 0 && inputString.charAt(0) == '{')
-      {
+      if (inputString.length() > 0 && inputString.charAt(0) == '{') {
         sendTelemetryToBackend(inputString);
       }
     }
