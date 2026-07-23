@@ -1,6 +1,7 @@
 #include <Arduino.h>
-// #include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
+#include <LiquidCrystal_I2C.h>
+
 // #include <PZEM004Tv30.h>
 #include "../lib/PHSensor/PHSensor.h"
 #include "../lib/TDSSensor/TDSSensor.h"
@@ -9,8 +10,8 @@
 #include "../lib/TimerInterrupt/TimerInterrupt.h"
 #include "../lib/WaterLevel/WaterLevel.h"
 
-// LCD (đã tắt - không dùng sau debug)
-// LiquidCrystal_I2C lcd(0x27, 16, 2);
+// LCD (tạm thời không sử dụng)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 // Relay control: đèn PB0, sủi PB14, bơm PB8
 const uint8_t relayPins[] = {PB0, PB14, PB8};
@@ -47,24 +48,22 @@ bool waitingForCalValue = false;
 // Timer Objects - Sử dụng TIM2, TIM3, TIM4
 TimerInterrupt sensorTimer(TIM2); // Timer cho tất cả sensors
 // TimerInterrupt pzemTimer(TIM4);   // Timer cho PZEM
-// TimerInterrupt lcdTimer(TIM3);    // Timer cho LCD update
+TimerInterrupt lcdTimer(TIM3); // Timer cho LCD update
 
 // Interrupt Flags
 volatile bool readSensorsFlag = false;
 // volatile bool readPzemFlag = false;
-// volatile bool updateLCDFlag = false;
+volatile bool updateLCDFlag = false;
 
 // Timer Callbacks - Chỉ set flag, không xử lý logic
 void sensorTimerCallback() { readSensorsFlag = true; }
-// void lcdTimerCallback() { updateLCDFlag = true; }
+void lcdTimerCallback() { updateLCDFlag = true; }
 
 // Serial Buffer
 String serialBuffer = "";
 
-void setRelayState(uint8_t relayIndex, bool enabled)
-{
-  if (relayIndex >= RELAY_COUNT)
-  {
+void setRelayState(uint8_t relayIndex, bool enabled) {
+  if (relayIndex >= RELAY_COUNT) {
     return;
   }
 
@@ -72,10 +71,8 @@ void setRelayState(uint8_t relayIndex, bool enabled)
   digitalWrite(relayPins[relayIndex], enabled ? LOW : HIGH);
 }
 
-void setAllRelaysState(bool enabled)
-{
-  for (uint8_t i = 0; i < RELAY_COUNT; ++i)
-  {
+void setAllRelaysState(bool enabled) {
+  for (uint8_t i = 0; i < RELAY_COUNT; ++i) {
     setRelayState(i, enabled);
   }
 }
@@ -207,35 +204,29 @@ void processRelayCommand(String cmd)
 }
 */
 
-uint8_t relayIndexFromTarget(String target)
-{
+uint8_t relayIndexFromTarget(String target) {
   target.trim();
   target.toUpperCase();
 
-  if (target == "1" || target == "DEN" || target == "LIGHT")
-  {
+  if (target == "1" || target == "DEN" || target == "LIGHT") {
     return 0;
   }
-  if (target == "2" || target == "SUI" || target == "AERATOR")
-  {
+  if (target == "2" || target == "SUI" || target == "AERATOR") {
     return 1;
   }
-  if (target == "3" || target == "BOM" || target == "PUMP")
-  {
+  if (target == "3" || target == "BOM" || target == "PUMP") {
     return 2;
   }
 
   return 255;
 }
 
-void processRelayCommand(String cmd)
-{
+void processRelayCommand(String cmd) {
   cmd.trim();
 
   int firstSeparator = cmd.indexOf(':');
   int secondSeparator = cmd.indexOf(':', firstSeparator + 1);
-  if (firstSeparator < 0 || secondSeparator < 0)
-  {
+  if (firstSeparator < 0 || secondSeparator < 0) {
     Serial3.println(">>> Invalid relay command");
     return;
   }
@@ -247,21 +238,14 @@ void processRelayCommand(String cmd)
   target.toUpperCase();
   action.toUpperCase();
 
-  if (target == "ALL" || target == "0")
-  {
-    if (action == "TURN_ON" || action == "ON" || action == "1")
-    {
+  if (target == "ALL" || target == "0") {
+    if (action == "TURN_ON" || action == "ON" || action == "1") {
       setAllRelaysState(true);
-    }
-    else if (action == "TURN_OFF" || action == "OFF" || action == "0")
-    {
+    } else if (action == "TURN_OFF" || action == "OFF" || action == "0") {
       setAllRelaysState(false);
-    }
-    else if (action == "TOGGLE")
-    {
+    } else if (action == "TOGGLE") {
       bool anyOn = false;
-      for (uint8_t i = 0; i < RELAY_COUNT; ++i)
-      {
+      for (uint8_t i = 0; i < RELAY_COUNT; ++i) {
         anyOn = anyOn || relayStates[i];
       }
       setAllRelaysState(!anyOn);
@@ -273,22 +257,16 @@ void processRelayCommand(String cmd)
   }
 
   uint8_t relayIndex = relayIndexFromTarget(target);
-  if (relayIndex == 255)
-  {
+  if (relayIndex == 255) {
     Serial3.println(">>> Relay index out of range");
     return;
   }
 
-  if (action == "TURN_ON" || action == "ON" || action == "1")
-  {
+  if (action == "TURN_ON" || action == "ON" || action == "1") {
     setRelayState(relayIndex, true);
-  }
-  else if (action == "TURN_OFF" || action == "OFF" || action == "0")
-  {
+  } else if (action == "TURN_OFF" || action == "OFF" || action == "0") {
     setRelayState(relayIndex, false);
-  }
-  else if (action == "TOGGLE")
-  {
+  } else if (action == "TOGGLE") {
     setRelayState(relayIndex, !relayStates[relayIndex]);
   }
 
@@ -379,13 +357,13 @@ void setup() {
   Serial.println("=== System Starting ===");
   Serial3.println("=== STM32 System Ready ===");
 
-  // LCD (đã tắt - không dùng sau debug)
-  // lcd.init();
-  // lcd.backlight();
-  // lcd.clear();
-  // lcd.setCursor(0, 0);
-  // lcd.print("System Init...");
-  // delay(1000);
+  // LCD (tạm thời không sử dụng)
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("System Init...");
+  delay(1000);
 
   // Khởi tạo các Custom Sensors
   Serial.println("Init Sensors...");
@@ -425,8 +403,7 @@ void setup() {
   Serial3.println("Water Level: OK");
 
   // Khởi tạo relay active-low
-  for (uint8_t i = 0; i < RELAY_COUNT; ++i)
-  {
+  for (uint8_t i = 0; i < RELAY_COUNT; ++i) {
     pinMode(relayPins[i], OUTPUT);
     digitalWrite(relayPins[i], HIGH);
   }
@@ -441,18 +418,18 @@ void setup() {
 
   sensorReady = true;
 
-  // lcd.clear();
-  // lcd.setCursor(0, 0);
-  // lcd.print("Ready!");
-  // delay(1000);
-  // lcd.clear();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Ready!");
+  delay(1000);
+  lcd.clear();
 
   // Khởi tạo Timer Interrupts
   Serial.println("Init Timers...");
   // Bỏ Hardware Timer vì bộ đếm 16-bit của STM32F103 chỉ chịu được tối đa 59.6
   // giây! sensorTimer.begin(60000, sensorTimerCallback); pzemTimer.begin(2000,
-  // pzemTimerCallback);     // Đọc PZEM mỗi 2000ms 
-  // lcdTimer.begin(500, lcdTimerCallback);       // Update LCD mỗi 500ms
+  // pzemTimerCallback);     // Đọc PZEM mỗi 2000ms
+  lcdTimer.begin(500, lcdTimerCallback); // Update LCD mỗi 500ms
   Serial.println("Timers: OK");
   Serial3.println("Timers: OK");
   Serial3.println("Using TIM2 (sensors)");
@@ -531,23 +508,26 @@ void loop() {
     sendTelemetryToEsp32();
   }
 
-  // ==== CẬP NHẬT LCD: Khi có interrupt từ TIM3 (đã tắt) ====
-  // if (updateLCDFlag) {
-  //   updateLCDFlag = false;
-  //   if (!phCalMode) {
-  //     lcd.clear();
-  //     lcd.setCursor(0, 0);
-  //     lcd.print("T:");
-  //     lcd.print(temperature, 1);
-  //     lcd.print(" P:");
-  //     lcd.print(phValue, 1);
-  //     lcd.setCursor(0, 1);
-  //     lcd.print("TDS:");
-  //     lcd.print((int)tdsValue);
-  //     lcd.print(" W:");
-  //     lcd.print(hasWater ? "1" : "0");
-  //   }
-  // }
+  // ==== CẬP NHẬT LCD: Khi có interrupt từ TIM3 ====
+  if (updateLCDFlag) {
+    updateLCDFlag = false;
+
+    if (!phCalMode) {
+      lcd.clear();
+
+      lcd.setCursor(0, 0);
+      lcd.print("T:");
+      lcd.print(temperature, 1);
+      lcd.print(" P:");
+      lcd.print(phValue, 1);
+
+      lcd.setCursor(0, 1);
+      lcd.print("TDS:");
+      lcd.print((int)tdsValue);
+      lcd.print(" W:");
+      lcd.print(hasWater ? "1" : "0");
+    }
+  }
 
   // ==== CALIBRATION ====
   phSensor.calibration(temperature);
