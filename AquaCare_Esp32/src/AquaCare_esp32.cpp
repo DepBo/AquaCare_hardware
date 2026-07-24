@@ -40,6 +40,9 @@ bool shouldSaveConfig = false;
 unsigned long lastWiFiCheck = 0;
 const unsigned long wifiTimeout = 60000;
 
+// Non-blocking Serial buffer (fix delay relay command)
+String esp32SerialBuffer = "";
+
 WiFiClientSecure espClient; // Sử dụng WiFiClientSecure cho TLS/SSL
 PubSubClient client(espClient);
 WiFiManager wm;
@@ -280,16 +283,20 @@ void loop() {
     client.loop();
     webSocket.loop();
 
-    if (Serial2.available()) {
-      String inputString = Serial2.readStringUntil('\n');
-      inputString.trim();
-
-      if (inputString.length() > 0) {
-        Serial.println(">>> RX from STM32: " + inputString);
-      }
-
-      if (inputString.length() > 0 && inputString.charAt(0) == '{') {
-        sendTelemetryToBackend(inputString);
+    // ==== nhận data từ STM32 (Non-blocking) ====
+    while (Serial2.available()) {
+      char c = (char)Serial2.read();
+      if (c == '\n') {
+        esp32SerialBuffer.trim();
+        if (esp32SerialBuffer.length() > 0) {
+          Serial.println(">>> RX from STM32: " + esp32SerialBuffer);
+          if (esp32SerialBuffer.charAt(0) == '{') {
+            sendTelemetryToBackend(esp32SerialBuffer);
+          }
+        }
+        esp32SerialBuffer = "";
+      } else if (c != '\r') {
+        esp32SerialBuffer += c;
       }
     }
   }

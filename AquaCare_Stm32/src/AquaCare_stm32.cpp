@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#include <LiquidCrystal_I2C.h>
+// #include <LiquidCrystal_I2C.h>
 
 // #include <PZEM004Tv30.h>
 #include "../lib/PHSensor/PHSensor.h"
@@ -11,10 +11,10 @@
 #include "../lib/WaterLevel/WaterLevel.h"
 
 // LCD (tạm thời không sử dụng)
-LiquidCrystal_I2C lcd(0x27, 16, 2);
+// LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-// Relay control: đèn PB0, sủi PB14, bơm PB8
-const uint8_t relayPins[] = {PB0, PB14, PB8};
+// Relay control: đèn PB0, sủi PB15, bơm PB8
+const uint8_t relayPins[] = {PB0, PB15, PB8};
 const uint8_t RELAY_COUNT = sizeof(relayPins) / sizeof(relayPins[0]);
 // HardwareSerial pzemSerial(PA3, PA2);
 // PZEM004Tv30 pzem(pzemSerial);
@@ -48,16 +48,16 @@ bool waitingForCalValue = false;
 // Timer Objects - Sử dụng TIM2, TIM3, TIM4
 TimerInterrupt sensorTimer(TIM2); // Timer cho tất cả sensors
 // TimerInterrupt pzemTimer(TIM4);   // Timer cho PZEM
-TimerInterrupt lcdTimer(TIM3); // Timer cho LCD update
+// TimerInterrupt lcdTimer(TIM3); // Timer cho LCD update (đã tắt LCD)
 
 // Interrupt Flags
 volatile bool readSensorsFlag = false;
 // volatile bool readPzemFlag = false;
-volatile bool updateLCDFlag = false;
+// volatile bool updateLCDFlag = false;
 
 // Timer Callbacks - Chỉ set flag, không xử lý logic
 void sensorTimerCallback() { readSensorsFlag = true; }
-void lcdTimerCallback() { updateLCDFlag = true; }
+// void lcdTimerCallback() { updateLCDFlag = true; }
 
 // Serial Buffer
 String serialBuffer = "";
@@ -357,13 +357,13 @@ void setup() {
   Serial.println("=== System Starting ===");
   Serial3.println("=== STM32 System Ready ===");
 
-  // LCD (tạm thời không sử dụng)
-  lcd.init();
-  lcd.backlight();
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("System Init...");
-  delay(1000);
+  // LCD đã bị tắt
+  // lcd.init();
+  // lcd.backlight();
+  // lcd.clear();
+  // lcd.setCursor(0, 0);
+  // lcd.print("System Init...");
+  // delay(1000);
 
   // Khởi tạo các Custom Sensors
   Serial.println("Init Sensors...");
@@ -418,18 +418,18 @@ void setup() {
 
   sensorReady = true;
 
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Ready!");
-  delay(1000);
-  lcd.clear();
+  // lcd.clear();
+  // lcd.setCursor(0, 0);
+  // lcd.print("Ready!");
+  // delay(1000);
+  // lcd.clear();
 
   // Khởi tạo Timer Interrupts
   Serial.println("Init Timers...");
   // Bỏ Hardware Timer vì bộ đếm 16-bit của STM32F103 chỉ chịu được tối đa 59.6
   // giây! sensorTimer.begin(60000, sensorTimerCallback); pzemTimer.begin(2000,
   // pzemTimerCallback);     // Đọc PZEM mỗi 2000ms
-  lcdTimer.begin(500, lcdTimerCallback); // Update LCD mỗi 500ms
+  // lcdTimer.begin(500, lcdTimerCallback); // LCD đã tắt
   Serial.println("Timers: OK");
   Serial3.println("Timers: OK");
   Serial3.println("Using TIM2 (sensors)");
@@ -508,26 +508,23 @@ void loop() {
     sendTelemetryToEsp32();
   }
 
-  // ==== CẬP NHẬT LCD: Khi có interrupt từ TIM3 ====
-  if (updateLCDFlag) {
-    updateLCDFlag = false;
-
-    if (!phCalMode) {
-      lcd.clear();
-
-      lcd.setCursor(0, 0);
-      lcd.print("T:");
-      lcd.print(temperature, 1);
-      lcd.print(" P:");
-      lcd.print(phValue, 1);
-
-      lcd.setCursor(0, 1);
-      lcd.print("TDS:");
-      lcd.print((int)tdsValue);
-      lcd.print(" W:");
-      lcd.print(hasWater ? "1" : "0");
-    }
-  }
+  // ==== CẬP NHẬT LCD: Đã tắt LCD ====
+  // if (updateLCDFlag) {
+  //   updateLCDFlag = false;
+  //   if (!phCalMode) {
+  //     lcd.clear();
+  //     lcd.setCursor(0, 0);
+  //     lcd.print("T:");
+  //     lcd.print(temperature, 1);
+  //     lcd.print(" P:");
+  //     lcd.print(phValue, 1);
+  //     lcd.setCursor(0, 1);
+  //     lcd.print("TDS:");
+  //     lcd.print((int)tdsValue);
+  //     lcd.print(" W:");
+  //     lcd.print(hasWater ? "1" : "0");
+  //   }
+  // }
 
   // ==== CALIBRATION ====
   phSensor.calibration(temperature);
