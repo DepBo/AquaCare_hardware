@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#include <LiquidCrystal_I2C.h>
+// #include <LiquidCrystal_I2C.h>
 
 // #include <PZEM004Tv30.h>
 #include "../lib/PHSensor/PHSensor.h"
@@ -10,8 +10,8 @@
 #include "../lib/TimerInterrupt/TimerInterrupt.h"
 #include "../lib/WaterLevel/WaterLevel.h"
 
-// LCD (tạm thời không sử dụng)
-LiquidCrystal_I2C lcd(0x27, 16, 2);
+// LCD (không sử dụng)
+// LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 // Relay control: đèn PB0, sủi PB14, bơm PB8
 const uint8_t relayPins[] = {PB0, PB15, PB8};
@@ -48,19 +48,40 @@ bool waitingForCalValue = false;
 // Timer Objects - Sử dụng TIM2, TIM3, TIM4
 TimerInterrupt sensorTimer(TIM2); // Timer cho tất cả sensors
 // TimerInterrupt pzemTimer(TIM4);   // Timer cho PZEM
-TimerInterrupt lcdTimer(TIM3); // Timer cho LCD update
+// TimerInterrupt lcdTimer(TIM3); // Timer cho LCD update
 
 // Interrupt Flags
 volatile bool readSensorsFlag = false;
 // volatile bool readPzemFlag = false;
-volatile bool updateLCDFlag = false;
+// volatile bool updateLCDFlag = false;
 
 // Timer Callbacks - Chỉ set flag, không xử lý logic
 void sensorTimerCallback() { readSensorsFlag = true; }
-void lcdTimerCallback() { updateLCDFlag = true; }
+// void lcdTimerCallback() { updateLCDFlag = true; }
 
 // Serial Buffer
 String serialBuffer = "";
+
+// Forward declaration
+void processIncomingCommand(String cmd);
+
+// ==========================================
+// HÀM ĐỌC LỆNH SERIAL - NON-BLOCKING
+// Gọi nhiều lần trong loop để giảm delay relay
+// ==========================================
+void processSerialCommands() {
+  while (Serial3.available()) {
+    char c = Serial3.read();
+    if (c == '\n' || c == '\r') {
+      if (serialBuffer.length() > 0) {
+        processIncomingCommand(serialBuffer);
+        serialBuffer = "";
+      }
+    } else {
+      serialBuffer += c;
+    }
+  }
+}
 
 void setRelayState(uint8_t relayIndex, bool enabled) {
   if (relayIndex >= RELAY_COUNT) {
@@ -357,13 +378,13 @@ void setup() {
   Serial.println("=== System Starting ===");
   Serial3.println("=== STM32 System Ready ===");
 
-  // LCD (tạm thời không sử dụng)
-  lcd.init();
-  lcd.backlight();
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("System Init...");
-  delay(1000);
+  // LCD (không sử dụng)
+  // lcd.init();
+  // lcd.backlight();
+  // lcd.clear();
+  // lcd.setCursor(0, 0);
+  // lcd.print("System Init...");
+  // delay(1000);
 
   // Khởi tạo các Custom Sensors
   Serial.println("Init Sensors...");
@@ -418,18 +439,18 @@ void setup() {
 
   sensorReady = true;
 
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Ready!");
-  delay(1000);
-  lcd.clear();
+  // lcd.clear();
+  // lcd.setCursor(0, 0);
+  // lcd.print("Ready!");
+  // delay(1000);
+  // lcd.clear();
 
   // Khởi tạo Timer Interrupts
   Serial.println("Init Timers...");
   // Bỏ Hardware Timer vì bộ đếm 16-bit của STM32F103 chỉ chịu được tối đa 59.6
   // giây! sensorTimer.begin(60000, sensorTimerCallback); pzemTimer.begin(2000,
   // pzemTimerCallback);     // Đọc PZEM mỗi 2000ms
-  lcdTimer.begin(500, lcdTimerCallback); // Update LCD mỗi 500ms
+  // lcdTimer.begin(500, lcdTimerCallback); // Update LCD mỗi 500ms
   Serial.println("Timers: OK");
   Serial3.println("Timers: OK");
   Serial3.println("Using TIM2 (sensors)");
@@ -455,19 +476,8 @@ void loop() {
     readSensorsFlag = true;
   }
 
-  // ==== NHẬN LỆNH TỪ ESP32 qua Serial3 ====
-  while (Serial3.available()) {
-    char c = Serial3.read();
-
-    if (c == '\n' || c == '\r') {
-      if (serialBuffer.length() > 0) {
-        processIncomingCommand(serialBuffer);
-        serialBuffer = "";
-      }
-    } else {
-      serialBuffer += c;
-    }
-  }
+  // ==== NHẬN LỆNH TỪ ESP32 qua Serial3 (non-blocking) ====
+  processSerialCommands();
 
   // ==== CẬP NHẬT FLOW: Liên tục (handled by FlowSensor) ====
   // flowSensor.update();
@@ -485,13 +495,19 @@ void loop() {
   if (readSensorsFlag) {
     readSensorsFlag = false;
 
-    // Đọc nhiệt độ PT100
+    // Flush lệnh chờ trước khi đọc sensor để relay không bị trễ
+    processSerialCommands();
+
+    // Đọc nhiệt độ PT100 (MAX31865::readRTD() blocking ~75ms)
     if (tempSensor.isReady()) {
       float temp = tempSensor.readTemperature();
       if (temp > -50 && temp < 200) {
         temperature = temp;
       }
     }
+
+    // Flush lại ngay sau khi đọc nhiệt độ (giảm trễ relay tối đa)
+    processSerialCommands();
 
     // Đọc TDS với temperature compensation
     tdsSensor.setTemperature(temperature);
@@ -508,26 +524,23 @@ void loop() {
     sendTelemetryToEsp32();
   }
 
-  // ==== CẬP NHẬT LCD: Khi có interrupt từ TIM3 ====
-  if (updateLCDFlag) {
-    updateLCDFlag = false;
-
-    if (!phCalMode) {
-      lcd.clear();
-
-      lcd.setCursor(0, 0);
-      lcd.print("T:");
-      lcd.print(temperature, 1);
-      lcd.print(" P:");
-      lcd.print(phValue, 1);
-
-      lcd.setCursor(0, 1);
-      lcd.print("TDS:");
-      lcd.print((int)tdsValue);
-      lcd.print(" W:");
-      lcd.print(hasWater ? "1" : "0");
-    }
-  }
+  // ==== CẬP NHẬT LCD: Khi có interrupt từ TIM3 (không sử dụng) ====
+  // if (updateLCDFlag) {
+  //   updateLCDFlag = false;
+  //   if (!phCalMode) {
+  //     lcd.clear();
+  //     lcd.setCursor(0, 0);
+  //     lcd.print("T:");
+  //     lcd.print(temperature, 1);
+  //     lcd.print(" P:");
+  //     lcd.print(phValue, 1);
+  //     lcd.setCursor(0, 1);
+  //     lcd.print("TDS:");
+  //     lcd.print((int)tdsValue);
+  //     lcd.print(" W:");
+  //     lcd.print(hasWater ? "1" : "0");
+  //   }
+  // }
 
   // ==== CALIBRATION ====
   phSensor.calibration(temperature);

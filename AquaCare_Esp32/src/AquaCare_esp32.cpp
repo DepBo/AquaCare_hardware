@@ -281,16 +281,21 @@ void loop() {
     client.loop();
     webSocket.loop();
 
-    if (Serial2.available()) {
-      String inputString = Serial2.readStringUntil('\n');
-      inputString.trim();
-
-      if (inputString.length() > 0) {
-        Serial.println(">>> RX from STM32: " + inputString);
-      }
-
-      if (inputString.length() > 0 && inputString.charAt(0) == '{') {
-        sendTelemetryToBackend(inputString);
+    // NON-BLOCKING: Đọc từng byte, tránh readStringUntil() gây block loop()
+    static String inputBuffer = "";
+    while (Serial2.available()) {
+      char c = (char)Serial2.read();
+      if (c == '\n') {
+        inputBuffer.trim();
+        if (inputBuffer.length() > 0) {
+          Serial.println(">>> RX from STM32: " + inputBuffer);
+          if (inputBuffer.charAt(0) == '{') {
+            sendTelemetryToBackend(inputBuffer);
+          }
+        }
+        inputBuffer = "";
+      } else if (c != '\r') {
+        inputBuffer += c;
       }
     }
   }

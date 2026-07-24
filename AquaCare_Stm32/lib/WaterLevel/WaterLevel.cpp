@@ -29,7 +29,7 @@ bool WaterLevel::isWaterPresent() {
     
     for(int i = 0; i < samples; i++) {
         sum += analogRead(pin);
-        delay(5); // Nghỉ 5ms giữa các lần đọc
+        // Không delay() ở đây - tránh block main loop làm trễ relay command
     }
     
     int avg = sum / samples;
